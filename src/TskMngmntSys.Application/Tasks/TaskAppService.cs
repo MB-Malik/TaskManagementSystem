@@ -2,10 +2,12 @@
 using Abp.Authorization;
 using Abp.Domain.Repositories;
 using Abp.UI;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using TskMngmntSys.Authorization;
 using TskMngmntSys.Entities.Task;
 using TskMngmntSys.Tasks.Dtos;
@@ -89,5 +91,61 @@ namespace TskMngmntSys.Tasks
 
             _taskRepository.Update(task);
         }
+
+        [AbpAuthorize(PermissionNames.Pages_Tasks)]
+        public async Task<List<TaskListDto>> GetMyTasks()
+        {
+            var userId = AbpSession.UserId;
+
+            if (!userId.HasValue)
+            {
+                throw new AbpAuthorizationException("User is not logged in");
+            }
+
+            var tasks = await _taskRepository
+                .GetAll()
+                .Where(t => t.AssignedUserId == userId.Value)
+                .Select(t => new TaskListDto
+                {
+                    Id = t.Id,
+                    Title = t.Title,
+                    Description = t.Description,
+                    Status = t.Status.ToString(),
+                    DueDate = t.DueDate
+                })
+                .ToListAsync();
+
+            return tasks;
+        }
+
+        [AbpAuthorize(PermissionNames.Pages_Tasks)]
+        public void ChangeStatus(ChangeTaskStatusDto input)
+        {
+            var userId = AbpSession.UserId;
+
+            if (!userId.HasValue)
+            {
+                throw new AbpAuthorizationException("User is not logged in");
+            }
+
+            var task = _taskRepository.FirstOrDefault(input.TaskId);
+
+            if (task == null)
+            {
+                throw new UserFriendlyException("Task not found");
+            }
+
+            if (task.AssignedUserId != userId.Value)
+            {
+                throw new AbpAuthorizationException(
+                    "You can only change the status of your own tasks"
+                );
+            }
+
+            task.Status = input.Status;
+
+            _taskRepository.Update(task);
+        }
+
     }
 }
