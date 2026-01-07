@@ -1,0 +1,22 @@
+﻿namespace TskMngmntSys.EntityFrameworkCore.Seed.Host
+{
+    public class InitialHostDbBuilder
+    {
+        private readonly TskMngmntSysDbContext _context;
+
+        public InitialHostDbBuilder(TskMngmntSysDbContext context)
+        {
+            _context = context;
+        }
+
+        public void Create()
+        {
+            new DefaultEditionCreator(_context).Create();
+            new DefaultLanguagesCreator(_context).Create();
+            new HostRoleAndUserCreator(_context).Create();
+            new DefaultSettingsCreator(_context).Create();
+
+            _context.SaveChanges();
+        }
+    }
+}
