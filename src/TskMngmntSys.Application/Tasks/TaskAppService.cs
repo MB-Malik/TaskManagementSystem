@@ -1,4 +1,5 @@
 ﻿using Abp.Application.Services;
+using Abp.Application.Services.Dto;
 using Abp.Authorization;
 using Abp.Domain.Repositories;
 using Abp.UI;
@@ -11,6 +12,10 @@ using System.Threading.Tasks;
 using TskMngmntSys.Authorization;
 using TskMngmntSys.Entities.Task;
 using TskMngmntSys.Tasks.Dtos;
+using System.Linq.Dynamic.Core;
+using Abp.Linq.Extensions;
+
+
 
 namespace TskMngmntSys.Tasks
 {
@@ -145,6 +150,31 @@ namespace TskMngmntSys.Tasks
             task.Status = input.Status;
 
             _taskRepository.Update(task);
+        }
+
+        [AbpAuthorize(PermissionNames.Pages_Tasks)]
+        public PagedResultDto<TaskOutputDto> GetTasksByUser(GetTasksByUserInput input)
+        {
+            var query = _taskRepository
+                .GetAll()
+                .Where(t => t.AssignedUserId == input.UserId);
+
+            var totalCount = query.Count();
+
+            var tasks = query
+                .OrderBy(input.Sorting ?? "Id DESC")
+                .PageBy(input)
+                .Select(t => new TaskOutputDto
+                {
+                    Id = t.Id,
+                    Title = t.Title,
+                    Description = t.Description,
+                    Status = t.Status.ToString(),
+                    AssignedUserId = t.AssignedUserId
+                })
+                .ToList();
+
+            return new PagedResultDto<TaskOutputDto>(totalCount, tasks);
         }
 
     }
