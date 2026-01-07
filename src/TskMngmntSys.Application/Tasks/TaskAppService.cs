@@ -72,6 +72,21 @@ namespace TskMngmntSys.Tasks
             task.Status = input.Status;
             task.DueDate = input.DueDate;
 
+            _taskRepository.Update(task); 
+        }
+
+        [AbpAuthorize(PermissionNames.Pages_Tasks_Edit)]
+        public void AssignTask(AssignTaskDto input)
+        {
+            var task = _taskRepository.FirstOrDefault(input.TaskId);
+
+            if (task == null)
+            {
+                throw new UserFriendlyException("Task not found");
+            }
+
+            task.AssignedUserId = input.UserId;
+
             _taskRepository.Update(task);
         }
     }

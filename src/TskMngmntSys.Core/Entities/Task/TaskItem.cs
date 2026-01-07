@@ -14,6 +14,6 @@ namespace TskMngmntSys.Entities.Task
         public TaskState Status { get; set; }
         public DateTime? DueDate { get; set; }
 
-     
+        public long? AssignedUserId { get; set; }
     }
 }
