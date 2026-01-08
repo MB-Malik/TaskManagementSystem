@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using TskMngmntSys.EntityFrameworkCore;
 
@@ -11,9 +12,11 @@ using TskMngmntSys.EntityFrameworkCore;
 namespace TskMngmntSys.Migrations
 {
     [DbContext(typeof(TskMngmntSysDbContext))]
-    partial class TskMngmntSysDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260108045132_AddingTenantId")]
+    partial class AddingTenantId
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

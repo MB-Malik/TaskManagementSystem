@@ -1,4 +1,5 @@
-﻿using Abp.Domain.Entities.Auditing;
+﻿using Abp.Domain.Entities;
+using Abp.Domain.Entities.Auditing;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,8 +8,9 @@ using System.Threading.Tasks;
 
 namespace TskMngmntSys.Entities.Task
 {
-    public class TaskItem : FullAuditedEntity<int>
+    public class TaskItem : FullAuditedEntity<int>, IMustHaveTenant
     {
+        public int TenantId { get; set; }
         public string Title { get; set; }
         public string Description { get; set; }
         public TaskState Status { get; set; }
