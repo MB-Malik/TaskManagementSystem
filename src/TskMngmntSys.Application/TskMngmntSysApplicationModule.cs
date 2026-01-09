@@ -2,6 +2,8 @@
 using Abp.Modules;
 using Abp.Reflection.Extensions;
 using TskMngmntSys.Authorization;
+using TskMngmntSys.EntityFrameworkCore.QueryModels;
+using TskMngmntSys.Tasks.Dtos;
 
 namespace TskMngmntSys
 {
@@ -25,6 +27,12 @@ namespace TskMngmntSys
                 // Scan the assembly for classes which inherit from AutoMapper.Profile
                 cfg => cfg.AddMaps(thisAssembly)
             );
+
+            Configuration.Modules.AbpAutoMapper().Configurators.Add(cfg =>
+            {
+                cfg.CreateMap<TaskProgressReport, TaskProgressReportDto>();
+            });
+
         }
     }
 }

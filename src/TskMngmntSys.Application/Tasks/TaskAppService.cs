@@ -14,6 +14,10 @@ using TskMngmntSys.Entities.Task;
 using TskMngmntSys.Tasks.Dtos;
 using System.Linq.Dynamic.Core;
 using Abp.Linq.Extensions;
+using Microsoft.Data.SqlClient;
+using Abp.EntityFrameworkCore;
+using TskMngmntSys.EntityFrameworkCore;
+using TskMngmntSys.EntityFrameworkCore.QueryModels;
 
 
 
@@ -22,11 +26,16 @@ namespace TskMngmntSys.Tasks
     [AbpAuthorize(PermissionNames.Pages_Tasks)]
     public class TaskAppService : ApplicationService
     {
+        private readonly IDbContextProvider<TskMngmntSysDbContext> _dbContextProvider;
+
+       
         private readonly IRepository<TaskItem, int> _taskRepository;
 
-        public TaskAppService(IRepository<TaskItem, int> taskRepository)
+        public TaskAppService(IRepository<TaskItem, int> taskRepository,
+            IDbContextProvider<TskMngmntSysDbContext> dbContextProvider)
         {
             _taskRepository = taskRepository;
+            _dbContextProvider = dbContextProvider;
         }
 
         [AbpAuthorize(PermissionNames.Pages_Tasks_Create)]
@@ -97,7 +106,6 @@ namespace TskMngmntSys.Tasks
             _taskRepository.Update(task);
         }
 
-        [AbpAuthorize(PermissionNames.Pages_Tasks)]
         public async Task<List<TaskListDto>> GetMyTasks()
         {
             var userId = AbpSession.UserId;
@@ -123,7 +131,6 @@ namespace TskMngmntSys.Tasks
             return tasks;
         }
 
-        [AbpAuthorize(PermissionNames.Pages_Tasks)]
         public void ChangeStatus(ChangeTaskStatusDto input)
         {
             var userId = AbpSession.UserId;
@@ -152,7 +159,6 @@ namespace TskMngmntSys.Tasks
             _taskRepository.Update(task);
         }
 
-        [AbpAuthorize(PermissionNames.Pages_Tasks)]
         public PagedResultDto<TaskOutputDto> GetTasksByUser(GetTasksByUserInput input)
         {
             var query = _taskRepository
@@ -177,5 +183,20 @@ namespace TskMngmntSys.Tasks
             return new PagedResultDto<TaskOutputDto>(totalCount, tasks);
         }
 
+        public async Task<List<TaskProgressReportDto>> GetTaskProgressReport()
+        {
+            var dbContext = await _dbContextProvider.GetDbContextAsync();
+            var tenantId = AbpSession.TenantId.Value;
+
+
+            var data = dbContext.Set<TaskProgressReport>()
+                .FromSqlRaw(
+                    "EXEC GetTaskProgressReport @TenantId",
+                    new SqlParameter("@TenantId", tenantId))
+                .AsNoTracking()
+                .ToList();
+
+            return ObjectMapper.Map<List<TaskProgressReportDto>>(data);
+        }
     }
 }

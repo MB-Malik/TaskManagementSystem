@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TskMngmntSys.Authorization.Roles;
 using TskMngmntSys.Authorization.Users;
 using TskMngmntSys.Entities.Task;
+using TskMngmntSys.EntityFrameworkCore.QueryModels;
 using TskMngmntSys.MultiTenancy;
 
 namespace TskMngmntSys.EntityFrameworkCore
@@ -17,6 +18,12 @@ namespace TskMngmntSys.EntityFrameworkCore
         public TskMngmntSysDbContext(DbContextOptions<TskMngmntSysDbContext> options)
             : base(options)
         {
+        }
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<TaskProgressReport>().HasNoKey();
+
         }
     }
 }
