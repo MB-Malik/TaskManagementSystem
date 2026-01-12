@@ -28,7 +28,7 @@ namespace TskMngmntSys.Tasks
     {
         private readonly IDbContextProvider<TskMngmntSysDbContext> _dbContextProvider;
 
-       
+
         private readonly IRepository<TaskItem, int> _taskRepository;
 
         public TaskAppService(IRepository<TaskItem, int> taskRepository,
@@ -46,6 +46,7 @@ namespace TskMngmntSys.Tasks
                 Title = input.Title,
                 Description = input.Description,
                 DueDate = input.DueDate,
+                Priority = input.Priority == 0 ? TaskPriority.Medium : input.Priority,
                 Status = TaskState.Open
             };
 
@@ -61,7 +62,8 @@ namespace TskMngmntSys.Tasks
                     Id = t.Id,
                     Title = t.Title,
                     Description = t.Description,
-                    Status = t.Status,
+                    Status = t.Status.ToString(),
+                    Priority = t.Priority.ToString(),
                     DueDate = t.DueDate
                 }).ToList();
         }
@@ -86,9 +88,10 @@ namespace TskMngmntSys.Tasks
             task.Title = input.Title;
             task.Description = input.Description;
             task.Status = input.Status;
+            task.Priority = input.Priority;
             task.DueDate = input.DueDate;
 
-            _taskRepository.Update(task); 
+            _taskRepository.Update(task);
         }
 
         [AbpAuthorize(PermissionNames.Pages_Tasks_Edit)]
@@ -124,6 +127,7 @@ namespace TskMngmntSys.Tasks
                     Title = t.Title,
                     Description = t.Description,
                     Status = t.Status.ToString(),
+                    Priority = t.Priority.ToString(),
                     DueDate = t.DueDate
                 })
                 .ToListAsync();
@@ -176,6 +180,8 @@ namespace TskMngmntSys.Tasks
                     Title = t.Title,
                     Description = t.Description,
                     Status = t.Status.ToString(),
+                    Priority = t.Priority.ToString(),
+                    DueDate = t.DueDate,
                     AssignedUserId = t.AssignedUserId
                 })
                 .ToList();
