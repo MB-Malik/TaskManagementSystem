@@ -44,6 +44,12 @@ namespace TskMngmntSys.Web.Host.Startup
             });
 
             IdentityRegistrar.Register(services);
+            services.Configure<Microsoft.AspNetCore.Identity.IdentityOptions>(options =>
+            {
+                options.Tokens.AuthenticatorTokenProvider =
+                    Microsoft.AspNetCore.Identity.TokenOptions.DefaultAuthenticatorProvider;
+            });
+
             AuthConfigurer.Configure(services, _appConfiguration);
 
             services.AddSignalR();

@@ -9,5 +9,8 @@
         public int ExpireInSeconds { get; set; }
 
         public long UserId { get; set; }
+
+        public bool RequiresTwoFactor { get; set; }
+
     }
 }
