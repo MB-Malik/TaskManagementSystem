@@ -8,8 +8,8 @@ namespace TskMngmntSys.Authentication.Dto
 {
     public class UpdateTwoFactorDto
     {
-        public long UserId { get; set; }
-        public int? TenantId { get; set; }
+        //public long UserId { get; set; }
+        //public int? TenantId { get; set; }
         public bool IsTwoFactorEnabled { get; set; }
     }
 

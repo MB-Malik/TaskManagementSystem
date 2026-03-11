@@ -12,5 +12,6 @@
 
         public bool RequiresTwoFactor { get; set; }
 
+        public string TenancyName { get; set; }
     }
 }

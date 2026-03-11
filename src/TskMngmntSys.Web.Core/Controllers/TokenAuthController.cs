@@ -3,6 +3,7 @@ using Abp.Authorization.Users;
 using Abp.Domain.Uow;
 using Abp.MultiTenancy;
 using Abp.Runtime.Security;
+using Abp.Runtime.Session;
 using Abp.UI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -23,6 +24,7 @@ using TskMngmntSys.MultiTenancy;
 namespace TskMngmntSys.Controllers
 {
     [Route("api/[controller]/[action]")]
+    [ApiController]
     public class TokenAuthController : TskMngmntSysControllerBase
     {
         private readonly LogInManager _logInManager;
@@ -33,7 +35,6 @@ namespace TskMngmntSys.Controllers
         private readonly UserClaimsPrincipalFactory _claimsPrincipalFactory;
         private readonly IUnitOfWorkManager _unitOfWorkManager;
 
-
         public TokenAuthController(
             LogInManager logInManager,
             ITenantCache tenantCache,
@@ -41,7 +42,7 @@ namespace TskMngmntSys.Controllers
             TokenAuthConfiguration configuration,
             UserManager userManager,
             UserClaimsPrincipalFactory claimsPrincipalFactory,
-             IUnitOfWorkManager unitOfWorkManager)
+            IUnitOfWorkManager unitOfWorkManager)
         {
             _logInManager = logInManager;
             _tenantCache = tenantCache;
@@ -50,12 +51,21 @@ namespace TskMngmntSys.Controllers
             _userManager = userManager;
             _claimsPrincipalFactory = claimsPrincipalFactory;
             _unitOfWorkManager = unitOfWorkManager;
-
         }
-        [AllowAnonymous] 
+
+        [AllowAnonymous]
         [HttpPost]
         public async Task<AuthenticateResultModel> Authenticate([FromBody] AuthenticateModel model)
         {
+            if (model == null)
+                throw new UserFriendlyException("Invalid request.");
+
+            if (string.IsNullOrWhiteSpace(model.UserNameOrEmailAddress))
+                throw new UserFriendlyException("Username or Email is required.");
+
+            if (string.IsNullOrWhiteSpace(model.Password))
+                throw new UserFriendlyException("Password is required.");
+
             var tenancyName = model.TenancyName ?? GetTenancyNameOrNull();
 
             var loginResult = await _logInManager.LoginAsync(
@@ -73,18 +83,24 @@ namespace TskMngmntSys.Controllers
                 );
             }
 
-            // ABP CLASSIC 2FA CHECK
+            if (loginResult.User == null)
+                throw new UserFriendlyException("User login failed.");
+
             if (loginResult.User.IsTwoFactorEnabled)
             {
                 return new AuthenticateResultModel
                 {
                     RequiresTwoFactor = true,
-                    UserId = loginResult.User.Id
+                    UserId = loginResult.User.Id,
+                    TenancyName = tenancyName
                 };
             }
 
-            var claimsIdentity = loginResult.Identity as ClaimsIdentity;
-            var accessToken = CreateAccessToken(claimsIdentity.Claims);
+            if (!(loginResult.Identity is ClaimsIdentity claimsIdentity))
+                throw new UserFriendlyException("Failed to create identity.");
+
+            var jwtClaims = CreateJwtClaims(claimsIdentity);
+            var accessToken = CreateAccessToken(jwtClaims);
 
             return new AuthenticateResultModel
             {
@@ -92,17 +108,38 @@ namespace TskMngmntSys.Controllers
                 EncryptedAccessToken = GetEncryptedAccessToken(accessToken),
                 ExpireInSeconds = (int)_configuration.Expiration.TotalSeconds,
                 UserId = loginResult.User.Id,
-                RequiresTwoFactor = false
+                RequiresTwoFactor = false,
+                TenancyName = tenancyName
             };
         }
+
         [AllowAnonymous]
         [HttpPost]
         public async Task<AuthenticateResultModel> VerifyTwoFactor([FromBody] Verify2FaDto input)
         {
-            using (_unitOfWorkManager.Current.SetTenantId(
-         _tenantCache.Get(input.TenancyName)?.Id))
+            if (input == null)
+                throw new UserFriendlyException("Invalid request.");
+
+            if (input.UserId <= 0)
+                throw new UserFriendlyException("Invalid user id.");
+
+            if (string.IsNullOrWhiteSpace(input.Code))
+                throw new UserFriendlyException("2FA code is required.");
+
+            if (string.IsNullOrWhiteSpace(input.TenancyName))
+                throw new UserFriendlyException("Tenancy name is required.");
+
+            var tenant = _tenantCache.GetOrNull(input.TenancyName);
+
+            if (tenant == null)
+                throw new UserFriendlyException("Invalid tenancy name.");
+
+            using (_unitOfWorkManager.Current.SetTenantId(tenant.Id))
             {
                 var user = await _userManager.GetUserByIdAsync(input.UserId);
+
+                if (user == null)
+                    throw new UserFriendlyException("User not found.");
 
                 var isValid = await _userManager.VerifyTwoFactorTokenAsync(
                     user,
@@ -111,14 +148,14 @@ namespace TskMngmntSys.Controllers
                 );
 
                 if (!isValid)
-                {
-                    throw new UserFriendlyException("Invalid 2FA code");
-                }
+                    throw new UserFriendlyException("Invalid 2FA code.");
 
-                var identity = await _claimsPrincipalFactory.CreateAsync(user);
-                var claimsIdentity = identity.Identity as ClaimsIdentity;
+                var principal = await _claimsPrincipalFactory.CreateAsync(user);
 
-                var accessToken = CreateAccessToken(claimsIdentity.Claims);
+                if (!(principal.Identity is ClaimsIdentity identity))
+                    throw new UserFriendlyException("Failed to generate claims identity.");
+
+                var accessToken = CreateAccessToken(CreateJwtClaims(identity));
 
                 return new AuthenticateResultModel
                 {
@@ -126,74 +163,60 @@ namespace TskMngmntSys.Controllers
                     EncryptedAccessToken = GetEncryptedAccessToken(accessToken),
                     ExpireInSeconds = (int)_configuration.Expiration.TotalSeconds,
                     UserId = user.Id,
-                    RequiresTwoFactor = false
+                    RequiresTwoFactor = false,
+                    TenancyName = input.TenancyName
                 };
             }
-
         }
 
         [HttpPost]
-        [AbpAuthorize(PermissionNames.Pages_Users)]
+        [AbpAuthorize]
         public async Task<IActionResult> UpdateTwoFactor([FromBody] UpdateTwoFactorDto input)
         {
             if (input == null)
-                return BadRequest("Invalid input");
+                throw new UserFriendlyException("Invalid request.");
 
-            using (_unitOfWorkManager.Current.SetTenantId(input.TenantId))
+            var currentUserId = AbpSession.GetUserId();
+            var tenantId = AbpSession.TenantId;
+
+            using (_unitOfWorkManager.Current.SetTenantId(tenantId))
             {
-                var user = await _userManager.GetUserByIdAsync(input.UserId);
+                var user = await _userManager.GetUserByIdAsync(currentUserId);
+
                 if (user == null)
-                    throw new Abp.AbpException($"There is no user with id: {input.UserId} in tenant: {input.TenantId}");
+                    throw new AbpAuthorizationException("Unauthorized access.");
 
-                if (!input.IsTwoFactorEnabled)
+                user.IsTwoFactorEnabled = input.IsTwoFactorEnabled;
+
+                if (input.IsTwoFactorEnabled)
                 {
-                    user.IsTwoFactorEnabled = false;
-                    await _userManager.ResetAuthenticatorKeyAsync(user); 
-                    await _userManager.UpdateAsync(user);
-                }
-                else
-                {
-                    user.IsTwoFactorEnabled = true;
                     await _userManager.ResetAuthenticatorKeyAsync(user);
-                    await _userManager.UpdateAsync(user);
                 }
 
-                return Ok(new { Success = true, UserId = user.Id, TwoFactorEnabled = user.IsTwoFactorEnabled });
+                await _userManager.UpdateAsync(user);
             }
+
+            return Ok(new
+            {
+                Success = true,
+                UserId = currentUserId,
+                TwoFactorEnabled = input.IsTwoFactorEnabled
+            });
         }
-
-        
-
-
 
         private string GetTenancyNameOrNull()
         {
             if (!AbpSession.TenantId.HasValue)
-            {
                 return null;
-            }
 
             return _tenantCache.GetOrNull(AbpSession.TenantId.Value)?.TenancyName;
-        }
-
-        private async Task<AbpLoginResult<Tenant, User>> GetLoginResultAsync(string usernameOrEmailAddress, string password, string tenancyName)
-        {
-            var loginResult = await _logInManager.LoginAsync(usernameOrEmailAddress, password, tenancyName);
-
-            switch (loginResult.Result)
-            {
-                case AbpLoginResultType.Success:
-                    return loginResult;
-                default:
-                    throw _abpLoginResultTypeHelper.CreateExceptionForFailedLoginAttempt(loginResult.Result, usernameOrEmailAddress, tenancyName);
-            }
         }
 
         private string CreateAccessToken(IEnumerable<Claim> claims, TimeSpan? expiration = null)
         {
             var now = DateTime.UtcNow;
 
-            var jwtSecurityToken = new JwtSecurityToken(
+            var token = new JwtSecurityToken(
                 issuer: _configuration.Issuer,
                 audience: _configuration.Audience,
                 claims: claims,
@@ -202,20 +225,25 @@ namespace TskMngmntSys.Controllers
                 signingCredentials: _configuration.SigningCredentials
             );
 
-            return new JwtSecurityTokenHandler().WriteToken(jwtSecurityToken);
+            return new JwtSecurityTokenHandler().WriteToken(token);
         }
 
         private static List<Claim> CreateJwtClaims(ClaimsIdentity identity)
         {
             var claims = identity.Claims.ToList();
-            var nameIdClaim = claims.First(c => c.Type == ClaimTypes.NameIdentifier);
 
-            // Specifically add the jti (random nonce), iat (issued timestamp), and sub (subject/user) claims.
+            var nameIdClaim = claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier);
+
+            if (nameIdClaim == null)
+                throw new UserFriendlyException("Invalid identity claims.");
+
             claims.AddRange(new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, nameIdClaim.Value),
                 new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                new Claim(JwtRegisteredClaimNames.Iat, DateTimeOffset.Now.ToUnixTimeSeconds().ToString(), ClaimValueTypes.Integer64)
+                new Claim(JwtRegisteredClaimNames.Iat,
+                    DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(),
+                    ClaimValueTypes.Integer64)
             });
 
             return claims;
